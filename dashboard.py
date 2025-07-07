@@ -81,7 +81,8 @@ def login_user(email, password):
 # Gradio UI
 with gr.Blocks() as demo:
     is_logged_in = gr.State(False)
-    
+    active_tab = gr.State(0)  # To manage which tab is active
+
     with gr.Tabs():
         # Login Tab (Visible by default)
         with gr.Tab("🔐 Login") as login_tab:
@@ -102,6 +103,9 @@ with gr.Blocks() as demo:
             predict_btn = gr.Button("Predict")
             predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
 
+            # Logout button inside the Detect tab
+            logout_btn = gr.Button("Logout", visible=False)
+        
         # About, Community, User Guide (Always visible)
         with gr.Tab("ℹ️ About"):
             about.layout()
@@ -112,9 +116,6 @@ with gr.Blocks() as demo:
         with gr.Tab("📘 User Guide"):
             user_guide.layout()
 
-        # Logout Button (Initially Hidden)
-        logout_btn = gr.Button("Logout", visible=False)
-        
     # Handlers
     def handle_login(email, password):
         success = login_user(email, password)
@@ -125,6 +126,7 @@ with gr.Blocks() as demo:
                 gr.update(visible=False),  # Hide Login tab
                 gr.update(visible=True),  # Show Detect tab
                 gr.update(visible=True),  # Show Logout button
+                gr.update(visible=True),  # Show Detect Deepfake tab
             )
         return (
             "❌ Invalid credentials",  # Error message
@@ -132,6 +134,7 @@ with gr.Blocks() as demo:
             gr.update(visible=True),  # Keep Login tab visible
             gr.update(visible=False),  # Hide Detect tab
             gr.update(visible=False),  # Hide Logout button
+            gr.update(visible=False),  # Hide Detect Deepfake tab
         )
     
     def handle_signup(name, phone, email, password):
@@ -144,13 +147,14 @@ with gr.Blocks() as demo:
             gr.update(visible=True),  # Show Login tab again
             gr.update(visible=False),  # Hide Detect tab
             gr.update(visible=False),  # Hide Logout button
+            gr.update(visible=False),  # Hide Detect Deepfake tab
         )
 
     # Button clicks
     login_btn.click(
         fn=handle_login,
         inputs=[email, password],
-        outputs=[message_output, is_logged_in, login_tab, detect_tab, logout_btn]
+        outputs=[message_output, is_logged_in, login_tab, detect_tab, logout_btn, detect_tab]
     )
     
     signup_btn.click(
@@ -162,7 +166,7 @@ with gr.Blocks() as demo:
     logout_btn.click(
         fn=handle_logout,
         inputs=[],
-        outputs=[is_logged_in, login_tab, detect_tab, logout_btn]
+        outputs=[is_logged_in, login_tab, detect_tab, logout_btn, detect_tab]
     )
 
 if __name__ == "__main__":
