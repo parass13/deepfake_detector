@@ -9,20 +9,15 @@ import tensorflow as tf
 import os
 import warnings
 
-# Import content pages
 from pages import about, community, user_guide
 
-# Suppress TensorFlow and warning logs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
-# Load deepfake model
 deepfake_model = tf.keras.models.load_model("model_15_64.h5")
 
-# Database setup
 db_path = os.path.abspath("users.db")
-print(f"✅ Using database at: {db_path}")
 conn = sqlite3.connect(db_path, check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''
@@ -37,14 +32,12 @@ CREATE TABLE IF NOT EXISTS user_details (
 ''')
 conn.commit()
 
-# Validators
 def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
 def is_valid_phone(phone):
     return re.match(r"^[0-9]{10}$", phone)
 
-# Image preprocessing
 def preprocess_image(image):
     image = np.array(image)
     image = cv2.resize(image, (128, 128))
@@ -56,7 +49,6 @@ def predict_image(image):
     prediction = deepfake_model.predict(preprocessed)[0][0]
     return "✅ Real Image" if prediction >= 0.5 else "⚠️ Fake Image"
 
-# Auth logic
 def register_user(name, phone, email, password):
     if not is_valid_email(email):
         return "❌ Invalid email"
@@ -69,7 +61,6 @@ def register_user(name, phone, email, password):
     cursor.execute("INSERT INTO user_details (NAME, PHONE, EMAIL, GENDER, PASSWORD) VALUES (?, ?, ?, ?, ?)",
                    (name, phone, email, "U", hashed_pw))
     conn.commit()
-    print(f"✅ Registered new user: {email}")
     return "✅ Registration successful! Please log in."
 
 def login_user(email, password):
@@ -79,15 +70,13 @@ def login_user(email, password):
         return True
     return False
 
-# Gradio UI
 with gr.Blocks() as demo:
     is_logged_in = gr.State(False)
-    tab_index = gr.State(0)
+    active_tab = gr.State(0)  # Track current tab
 
-    with gr.Tabs() as tabs:
-        with gr.Tab("🔐 Login"):
+    with gr.TabGroup(selected=active_tab) as tabs:
+        with gr.Tab("🔐 Login") as login_tab:
             gr.Markdown("### Login or Sign Up")
-
             name = gr.Textbox(label="Name (Sign Up Only)")
             phone = gr.Textbox(label="Phone (Sign Up Only)")
             email = gr.Textbox(label="Email")
@@ -96,15 +85,15 @@ with gr.Blocks() as demo:
             signup_btn = gr.Button("Sign Up")
             message_output = gr.Markdown("", visible=False)
 
-        with gr.Tab("🧪 Detect Deepfake", visible=False) as detect_tab:
-            detect_area = gr.Column(visible=True)
+        with gr.Tab("🧪 Detect Deepfake") as detect_tab:
+            detect_area = gr.Column(visible=False)
             with detect_area:
                 gr.Markdown("### Upload an Image to Detect Deepfake")
                 image_input = gr.Image(type="pil")
                 result = gr.Textbox(label="Prediction Result")
                 predict_btn = gr.Button("Predict")
                 predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
-            detect_warning = gr.Markdown("❌ Please log in to use this feature.", visible=False)
+            detect_warning = gr.Markdown("❌ Please log in to use this feature.", visible=True)
 
         with gr.Tab("ℹ️ About"):
             about.layout()
@@ -115,22 +104,31 @@ with gr.Blocks() as demo:
         with gr.Tab("📘 User Guide"):
             user_guide.layout()
 
-        with gr.Tab("🚪 Logout", visible=False) as logout_tab:
-            gr.Markdown("You are logged in.")
-            logout_btn = gr.Button("Logout")
+        with gr.Tab("🚪 Logout") as logout_tab:
+            logout_info = gr.Markdown("You are logged in.")
+            logout_btn = gr.Button("Logout", visible=True)
 
-    # Handlers
+    # Logic for buttons
     def handle_login(email, password):
         success = login_user(email, password)
-        return (
-            "✅ Login successful!" if success else "❌ Invalid credentials",
-            success,
-            1 if success else 0,
-            gr.update(visible=success),
-            gr.update(visible=not success),
-            gr.update(visible=success),
-            gr.update(visible=True)
-        )
+        if success:
+            return (
+                "✅ Login successful!",
+                True,
+                1,  # Set to "Detect Deepfake" tab
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(visible=True)
+            )
+        else:
+            return (
+                "❌ Invalid credentials",
+                False,
+                0,
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(visible=False)
+            )
 
     def handle_signup(name, phone, email, password):
         msg = register_user(name, phone, email, password)
@@ -149,7 +147,7 @@ with gr.Blocks() as demo:
     login_btn.click(
         fn=handle_login,
         inputs=[email, password],
-        outputs=[message_output, is_logged_in, tab_index, detect_area, detect_warning, logout_tab, message_output]
+        outputs=[message_output, is_logged_in, active_tab, detect_area, detect_warning, logout_info]
     )
 
     signup_btn.click(
@@ -161,7 +159,7 @@ with gr.Blocks() as demo:
     logout_btn.click(
         fn=handle_logout,
         inputs=[],
-        outputs=[is_logged_in, tab_index, detect_area, detect_warning, logout_tab, message_output]
+        outputs=[is_logged_in, active_tab, detect_area, detect_warning, logout_info, message_output]
     )
 
 if __name__ == "__main__":
