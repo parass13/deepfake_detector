@@ -1,18 +1,7 @@
 
 # Deepfake Detector
 
-
-title: Deepfake Detector
-emoji: 📚
-colorFrom: red
-colorTo: red
-sdk: gradio
-sdk_version: 5.35.0
-app_file: dashboard.py
-pinned: false
-
- 
-A Gradio-based web app for detecting deepfakes using a trained deep learning model.
+ A Gradio-based web app for detecting deepfakes using a trained deep learning model.
 
 ## 🔧 Features
 - Image upload interface
@@ -27,7 +16,19 @@ A Gradio-based web app for detecting deepfakes using a trained deep learning mod
 
 ## 📦 Deployment
 This app is deployed on Hugging Face Spaces and cloned to GitHub for version control.
+# deepfake_detector
 
 
+
+## 📦 Installation
+
+```bash
+git clone https://github.com/parass13/deepfake_detector.git
+cd deepfake_detector
+pip install -r requirements.txt
+python dashboard.py
+
+
+```
 
 Check out the [Hugging Face Spaces config reference](https://huggingface.co/docs/hub/spaces-config-reference)
