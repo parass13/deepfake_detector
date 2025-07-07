@@ -11,12 +11,15 @@ import warnings
 
 from pages import about, community, user_guide
 
+# Suppress warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
+# Load model
 deepfake_model = tf.keras.models.load_model("model_15_64.h5")
 
+# DB setup
 db_path = os.path.abspath("users.db")
 conn = sqlite3.connect(db_path, check_same_thread=False)
 cursor = conn.cursor()
@@ -32,12 +35,14 @@ CREATE TABLE IF NOT EXISTS user_details (
 ''')
 conn.commit()
 
+# Validators
 def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
 def is_valid_phone(phone):
     return re.match(r"^[0-9]{10}$", phone)
 
+# Image predict
 def preprocess_image(image):
     image = np.array(image)
     image = cv2.resize(image, (128, 128))
@@ -49,6 +54,7 @@ def predict_image(image):
     prediction = deepfake_model.predict(preprocessed)[0][0]
     return "✅ Real Image" if prediction >= 0.5 else "⚠️ Fake Image"
 
+# Register/Login
 def register_user(name, phone, email, password):
     if not is_valid_email(email):
         return "❌ Invalid email"
@@ -70,65 +76,58 @@ def login_user(email, password):
         return True
     return False
 
+# UI
 with gr.Blocks() as demo:
     is_logged_in = gr.State(False)
-    active_tab = gr.State(0)  # Track current tab
 
-    with gr.TabGroup(selected=active_tab) as tabs:
-        with gr.Tab("🔐 Login") as login_tab:
-            gr.Markdown("### Login or Sign Up")
-            name = gr.Textbox(label="Name (Sign Up Only)")
-            phone = gr.Textbox(label="Phone (Sign Up Only)")
-            email = gr.Textbox(label="Email")
-            password = gr.Textbox(label="Password", type="password")
-            login_btn = gr.Button("Login")
-            signup_btn = gr.Button("Sign Up")
-            message_output = gr.Markdown("", visible=False)
+    # Login Tab
+    with gr.Tab("🔐 Login") as login_tab:
+        gr.Markdown("### Login or Sign Up")
+        name = gr.Textbox(label="Name (Sign Up Only)")
+        phone = gr.Textbox(label="Phone (Sign Up Only)")
+        email = gr.Textbox(label="Email")
+        password = gr.Textbox(label="Password", type="password")
+        login_btn = gr.Button("Login")
+        signup_btn = gr.Button("Sign Up")
+        login_message = gr.Markdown("", visible=False)
 
-        with gr.Tab("🧪 Detect Deepfake") as detect_tab:
-            detect_area = gr.Column(visible=False)
-            with detect_area:
-                gr.Markdown("### Upload an Image to Detect Deepfake")
-                image_input = gr.Image(type="pil")
-                result = gr.Textbox(label="Prediction Result")
-                predict_btn = gr.Button("Predict")
-                predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
-            detect_warning = gr.Markdown("❌ Please log in to use this feature.", visible=True)
+    # Detect Deepfake Tab
+    with gr.Tab("🧪 Detect Deepfake") as detect_tab:
+        detect_area = gr.Column(visible=False)
+        with detect_area:
+            gr.Markdown("### Upload an Image to Detect Deepfake")
+            image_input = gr.Image(type="pil")
+            result = gr.Textbox(label="Prediction Result")
+            predict_btn = gr.Button("Predict")
+            predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
 
-        with gr.Tab("ℹ️ About"):
-            about.layout()
+        detect_warning = gr.Markdown("❌ Please log in to use this feature.", visible=True)
 
-        with gr.Tab("🌐 Community"):
-            community.layout()
+    # Other tabs (publicly visible)
+    with gr.Tab("ℹ️ About"):
+        about.layout()
 
-        with gr.Tab("📘 User Guide"):
-            user_guide.layout()
+    with gr.Tab("🌐 Community"):
+        community.layout()
 
-        with gr.Tab("🚪 Logout") as logout_tab:
-            logout_info = gr.Markdown("You are logged in.")
-            logout_btn = gr.Button("Logout", visible=True)
+    with gr.Tab("📘 User Guide"):
+        user_guide.layout()
 
-    # Logic for buttons
+    # Logout Tab
+    with gr.Tab("🚪 Logout") as logout_tab:
+        logout_msg = gr.Markdown("You are logged in.")
+        logout_btn = gr.Button("Logout", visible=True)
+
+    # Logic
     def handle_login(email, password):
         success = login_user(email, password)
-        if success:
-            return (
-                "✅ Login successful!",
-                True,
-                1,  # Set to "Detect Deepfake" tab
-                gr.update(visible=True),
-                gr.update(visible=False),
-                gr.update(visible=True)
-            )
-        else:
-            return (
-                "❌ Invalid credentials",
-                False,
-                0,
-                gr.update(visible=False),
-                gr.update(visible=True),
-                gr.update(visible=False)
-            )
+        return (
+            "✅ Login successful!" if success else "❌ Invalid credentials",
+            success,
+            gr.update(visible=success),
+            gr.update(visible=not success),
+            gr.update(visible=True),
+        )
 
     def handle_signup(name, phone, email, password):
         msg = register_user(name, phone, email, password)
@@ -137,29 +136,29 @@ with gr.Blocks() as demo:
     def handle_logout():
         return (
             False,
-            0,
             gr.update(visible=False),
             gr.update(visible=True),
             gr.update(visible=False),
             gr.update(visible=False)
         )
 
+    # Button bindings
     login_btn.click(
         fn=handle_login,
         inputs=[email, password],
-        outputs=[message_output, is_logged_in, active_tab, detect_area, detect_warning, logout_info]
+        outputs=[login_message, is_logged_in, detect_area, detect_warning, logout_msg]
     )
 
     signup_btn.click(
         fn=handle_signup,
         inputs=[name, phone, email, password],
-        outputs=[message_output]
+        outputs=[login_message]
     )
 
     logout_btn.click(
         fn=handle_logout,
         inputs=[],
-        outputs=[is_logged_in, active_tab, detect_area, detect_warning, logout_info, message_output]
+        outputs=[is_logged_in, detect_area, detect_warning, logout_msg, login_message]
     )
 
 if __name__ == "__main__":
