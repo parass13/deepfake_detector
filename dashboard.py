@@ -11,10 +11,10 @@ import warnings
 
 # Import pages (make sure each page has layout() function defined)
 
-import about
-import examples
-import community
-import user_guide
+from pages import about
+from pages import community
+from pages import examples
+from pages import user_guide
 
 
 # Suppress logs and warnings
