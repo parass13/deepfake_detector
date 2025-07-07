@@ -19,7 +19,7 @@ np.seterr(all='ignore')
 # Load model
 deepfake_model = tf.keras.models.load_model("model_15_64.h5")
 
-# Database
+# Database setup
 db_path = os.path.abspath("users.db")
 conn = sqlite3.connect(db_path, check_same_thread=False)
 cursor = conn.cursor()
@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS user_details (
 )
 ''')
 conn.commit()
+conn.close()
 
 # Validators
 def is_valid_email(email): return re.match(r"[^@]+@[^@]+\.[^@]+", email)
@@ -51,24 +52,35 @@ def predict_image(image):
     prediction = deepfake_model.predict(preprocessed)[0][0]
     return "✅ Real Image" if prediction >= 0.5 else "⚠️ Fake Image"
 
-# Auth logic
+# Auth logic (now using local DB connection inside each function)
 def register_user(name, phone, email, password):
     if not is_valid_email(email):
         return "❌ Invalid email"
     if not is_valid_phone(phone):
         return "❌ Phone must be 10 digits"
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     cursor.execute("SELECT * FROM user_details WHERE EMAIL = ?", (email,))
     if cursor.fetchone():
+        conn.close()
         return "⚠️ Email already registered"
+
     hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-    cursor.execute("INSERT INTO user_details (NAME, PHONE, EMAIL, GENDER, PASSWORD) VALUES (?, ?, ?, ?, ?)",
-                   (name, phone, email, "U", hashed_pw))
+    cursor.execute(
+        "INSERT INTO user_details (NAME, PHONE, EMAIL, GENDER, PASSWORD) VALUES (?, ?, ?, ?, ?)",
+        (name, phone, email, "U", hashed_pw)
+    )
     conn.commit()
+    conn.close()
     return "✅ Registration successful! Please log in."
 
 def login_user(email, password):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     cursor.execute("SELECT PASSWORD FROM user_details WHERE EMAIL = ?", (email,))
     result = cursor.fetchone()
+    conn.close()
     if result and bcrypt.checkpw(password.encode(), result[0] if isinstance(result[0], bytes) else result[0].encode()):
         return True
     return False
@@ -109,7 +121,6 @@ with gr.Blocks() as demo:
             user_guide.layout()
 
     # --- Backend Logic ---
-
     def handle_login(email, password):
         success = login_user(email, password)
         if success:
