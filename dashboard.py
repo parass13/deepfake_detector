@@ -105,7 +105,7 @@ with gr.Blocks() as demo:
 
             # Logout button inside the Detect tab
             logout_btn = gr.Button("Logout", visible=False)
-        
+
         # About, Community, User Guide (Always visible)
         with gr.Tab("ℹ️ About"):
             about.layout()
@@ -127,6 +127,7 @@ with gr.Blocks() as demo:
                 gr.update(visible=False),  # Hide Login tab
                 gr.update(visible=True),  # Show Detect tab
                 gr.update(visible=True),  # Show Logout button
+                gr.update(selected=1),  # Select Detect Deepfake tab
             )
         return (
             "❌ Invalid credentials",  # Error message
@@ -135,6 +136,7 @@ with gr.Blocks() as demo:
             gr.update(visible=True),  # Keep Login tab visible
             gr.update(visible=False),  # Hide Detect tab
             gr.update(visible=False),  # Hide Logout button
+            gr.update(selected=0),  # Keep Login tab selected
         )
     
     def handle_signup(name, phone, email, password):
@@ -148,13 +150,14 @@ with gr.Blocks() as demo:
             gr.update(visible=True),  # Show Login tab again
             gr.update(visible=False),  # Hide Detect tab
             gr.update(visible=False),  # Hide Logout button
+            gr.update(selected=0),  # Go back to Login tab
         )
 
     # Button clicks
     login_btn.click(
         fn=handle_login,
         inputs=[email, password],
-        outputs=[message_output, is_logged_in, active_tab, login_tab, detect_tab, logout_btn]
+        outputs=[message_output, is_logged_in, active_tab, login_tab, detect_tab, logout_btn, message_output]
     )
     
     signup_btn.click(
