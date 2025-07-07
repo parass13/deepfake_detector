@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
 # Load model
-deepfake_model = tf.keras.models.load_model("model_15_64 (1).h5")
+deepfake_model = tf.keras.models.load_model("model_15_64.h5")
 
 # Setup SQLite instead of MySQL
 conn = sqlite3.connect("users.db", check_same_thread=False)
