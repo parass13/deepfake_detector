@@ -10,12 +10,12 @@ import os
 import warnings
 
 # Import pages (make sure each page has layout() function defined)
-import home
+
 import about
 import examples
 import community
 import user_guide
-import install
+
 
 # Suppress logs and warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -89,8 +89,7 @@ def login_user(email, password):
 # Gradio App
 with gr.Blocks() as demo:
     with gr.Tabs():
-        with gr.Tab("🏠 Home"):
-            home.layout()
+        
 
         with gr.Tab("🔐 Login"):
             gr.Markdown("### Login or Sign Up")
@@ -125,9 +124,7 @@ with gr.Blocks() as demo:
         with gr.Tab("📘 User Guide"):
             user_guide.layout()
 
-        with gr.Tab("⚙️ Install"):
-            install.layout()
-
+        
 # Launch App
 if __name__ == "__main__":
     demo.launch()
