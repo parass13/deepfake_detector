@@ -14,14 +14,16 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
-# Load model
+# Load TensorFlow model
 deepfake_model = tf.keras.models.load_model("model_15_64.h5")
 
-# Setup SQLite instead of MySQL
-conn = sqlite3.connect("users.db", check_same_thread=False)
+# Setup SQLite connection
+db_path = os.path.abspath("users.db")
+print(f"✅ Using database at: {db_path}")
+conn = sqlite3.connect(db_path, check_same_thread=False)
 cursor = conn.cursor()
 
-# Create user_details table in SQLite
+# Create user_details table if not exists
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS user_details (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,30 +31,32 @@ CREATE TABLE IF NOT EXISTS user_details (
     PHONE TEXT,
     EMAIL TEXT UNIQUE,
     GENDER TEXT,
-    PASSWORD TEXT
+    PASSWORD BLOB
 )
 ''')
 conn.commit()
 
-# Validation utilities
+# Validation functions
 def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
 def is_valid_phone(phone):
     return re.match(r"^[0-9]{10}$", phone)
 
+# Image preprocessing
 def preprocess_image(image):
     image = np.array(image)
     image = cv2.resize(image, (128, 128))
     image = image.astype(np.float32) / 255.0
     return np.expand_dims(image, axis=0)
 
+# Deepfake prediction
 def predict_image(image):
     preprocessed = preprocess_image(image)
     prediction = deepfake_model.predict(preprocessed)[0][0]
     return "✅ Real Image" if prediction >= 0.5 else "⚠️ Fake Image"
 
-# Register user
+# Register new user
 def register_user(name, phone, email, password):
     if not is_valid_email(email):
         return "❌ Invalid email", False
@@ -67,17 +71,18 @@ def register_user(name, phone, email, password):
     cursor.execute("INSERT INTO user_details (NAME, PHONE, EMAIL, GENDER, PASSWORD) VALUES (?, ?, ?, ?, ?)",
                    (name, phone, email, "U", hashed_pw))
     conn.commit()
+    print(f"✅ Registered new user: {email}")
     return "✅ Registration successful! Please log in.", True
 
 # Login user
 def login_user(email, password):
     cursor.execute("SELECT PASSWORD FROM user_details WHERE EMAIL = ?", (email,))
     result = cursor.fetchone()
-    if result and bcrypt.checkpw(password.encode(), result[0].encode() if isinstance(result[0], str) else result[0]):
+    if result and bcrypt.checkpw(password.encode(), result[0] if isinstance(result[0], bytes) else result[0].encode()):
         return "✅ Login successful!", True
     return "❌ Invalid credentials", False
 
-# App layout
+# Gradio Interface
 with gr.Blocks() as demo:
     session = gr.State({})
     show_login = gr.State(True)
@@ -108,16 +113,16 @@ with gr.Blocks() as demo:
 
     def handle_signup(n, ph, e, p):
         msg, ok = register_user(n, ph, e, p)
-        return msg
+        return msg, gr.update(visible=not ok), gr.update(visible=ok)
 
     def handle_logout():
         return {}, gr.update(visible=True), gr.update(visible=False)
 
     login_btn.click(handle_login, [email, password], [status, login_panel, prediction_panel])
-    signup_btn.click(handle_signup, [name, phone, email, password], status)
+    signup_btn.click(handle_signup, [name, phone, email, password], [status, login_panel, prediction_panel])
     predict_btn.click(predict_image, inputs=image_input, outputs=result)
     logout_btn.click(handle_logout, outputs=[session, login_panel, prediction_panel])
 
-# Launch
+# Launch app
 if __name__ == "__main__":
     demo.launch()
