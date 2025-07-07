@@ -83,7 +83,7 @@ with gr.Blocks() as demo:
     is_logged_in = gr.State(False)
     active_tab = gr.State(0)  # To manage which tab is active
 
-    with gr.Tabs():
+    with gr.Tabs() as tabs:
         # Login Tab (Visible by default)
         with gr.Tab("🔐 Login") as login_tab:
             gr.Markdown("### Login or Sign Up")
@@ -123,18 +123,18 @@ with gr.Blocks() as demo:
             return (
                 "✅ Login successful!",  # Success message
                 True,  # Update logged-in state
+                1,  # Set active tab to Detect Deepfake tab
                 gr.update(visible=False),  # Hide Login tab
                 gr.update(visible=True),  # Show Detect tab
                 gr.update(visible=True),  # Show Logout button
-                gr.update(visible=True),  # Show Detect Deepfake tab
             )
         return (
             "❌ Invalid credentials",  # Error message
             False,  # Keep logged-in state False
+            0,  # Keep active tab on Login tab
             gr.update(visible=True),  # Keep Login tab visible
             gr.update(visible=False),  # Hide Detect tab
             gr.update(visible=False),  # Hide Logout button
-            gr.update(visible=False),  # Hide Detect Deepfake tab
         )
     
     def handle_signup(name, phone, email, password):
@@ -144,17 +144,17 @@ with gr.Blocks() as demo:
     def handle_logout():
         return (
             False,  # User logs out
+            0,  # Go back to Login tab
             gr.update(visible=True),  # Show Login tab again
             gr.update(visible=False),  # Hide Detect tab
             gr.update(visible=False),  # Hide Logout button
-            gr.update(visible=False),  # Hide Detect Deepfake tab
         )
 
     # Button clicks
     login_btn.click(
         fn=handle_login,
         inputs=[email, password],
-        outputs=[message_output, is_logged_in, login_tab, detect_tab, logout_btn, detect_tab]
+        outputs=[message_output, is_logged_in, active_tab, login_tab, detect_tab, logout_btn]
     )
     
     signup_btn.click(
@@ -166,7 +166,7 @@ with gr.Blocks() as demo:
     logout_btn.click(
         fn=handle_logout,
         inputs=[],
-        outputs=[is_logged_in, login_tab, detect_tab, logout_btn, detect_tab]
+        outputs=[is_logged_in, active_tab, login_tab, detect_tab, logout_btn]
     )
 
 if __name__ == "__main__":
