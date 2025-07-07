@@ -9,12 +9,20 @@ import tensorflow as tf
 import os
 import warnings
 
-# Suppress all warnings
+# Custom page modules (ensure these files exist)
+import home
+import about
+import examples
+import community
+import user_guide
+import install
+
+# Suppress all warnings and unnecessary logs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
-# Load TensorFlow model
+# Load the deepfake model
 deepfake_model = tf.keras.models.load_model("model_15_64.h5")
 
 # Setup SQLite connection
@@ -36,10 +44,11 @@ CREATE TABLE IF NOT EXISTS user_details (
 ''')
 conn.commit()
 
-# Validation functions
+# Email validation
 def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
+# Phone validation
 def is_valid_phone(phone):
     return re.match(r"^[0-9]{10}$", phone)
 
@@ -50,7 +59,7 @@ def preprocess_image(image):
     image = image.astype(np.float32) / 255.0
     return np.expand_dims(image, axis=0)
 
-# Deepfake prediction
+# Predict deepfake
 def predict_image(image):
     preprocessed = preprocess_image(image)
     prediction = deepfake_model.predict(preprocessed)[0][0]
@@ -74,7 +83,7 @@ def register_user(name, phone, email, password):
     print(f"✅ Registered new user: {email}")
     return "✅ Registration successful! Please log in.", True
 
-# Login user
+# Login existing user
 def login_user(email, password):
     cursor.execute("SELECT PASSWORD FROM user_details WHERE EMAIL = ?", (email,))
     result = cursor.fetchone()
@@ -82,47 +91,56 @@ def login_user(email, password):
         return "✅ Login successful!", True
     return "❌ Invalid credentials", False
 
-# Gradio Interface
+# Gradio interface
 with gr.Blocks() as demo:
     session = gr.State({})
-    show_login = gr.State(True)
 
-    status = gr.Textbox(label="", interactive=False)
+    with gr.Tabs():
+        with gr.Tab("Home"):
+            home.layout()
 
-    with gr.Column(visible=True) as login_panel:
-        gr.Markdown("### Login or Sign Up")
-        name = gr.Textbox(label="Name (Sign Up Only)")
-        phone = gr.Textbox(label="Phone (Sign Up Only)")
-        email = gr.Textbox(label="Email")
-        password = gr.Textbox(label="Password", type="password")
+        with gr.Tab("Login"):
+            status = gr.Textbox(label="", interactive=False)
+            name = gr.Textbox(label="Name (Sign Up Only)")
+            phone = gr.Textbox(label="Phone (Sign Up Only)")
+            email = gr.Textbox(label="Email")
+            password = gr.Textbox(label="Password", type="password")
+            login_btn = gr.Button("Login")
+            signup_btn = gr.Button("Sign Up")
 
-        login_btn = gr.Button("Login")
-        signup_btn = gr.Button("Sign Up")
+            def handle_login(e, p):
+                msg, ok = login_user(e, p)
+                return msg
 
-    with gr.Column(visible=False) as prediction_panel:
-        gr.Markdown("## Upload Image for Deepfake Detection")
-        image_input = gr.Image(type="pil")
-        result = gr.Textbox(label="Result")
-        predict_btn = gr.Button("Predict")
-        logout_btn = gr.Button("Logout")
+            def handle_signup(n, ph, e, p):
+                msg, ok = register_user(n, ph, e, p)
+                return msg
 
-    # Logic
-    def handle_login(e, p):
-        msg, ok = login_user(e, p)
-        return msg, gr.update(visible=not ok), gr.update(visible=ok)
+            login_btn.click(handle_login, [email, password], status)
+            signup_btn.click(handle_signup, [name, phone, email, password], status)
 
-    def handle_signup(n, ph, e, p):
-        msg, ok = register_user(n, ph, e, p)
-        return msg, gr.update(visible=not ok), gr.update(visible=ok)
+        with gr.Tab("Detect Deepfake"):
+            gr.Markdown("### Upload an Image to Detect")
+            image_input = gr.Image(type="pil")
+            result = gr.Textbox(label="Result")
+            predict_btn = gr.Button("Predict")
+            predict_btn.click(predict_image, inputs=image_input, outputs=result)
 
-    def handle_logout():
-        return {}, gr.update(visible=True), gr.update(visible=False)
+        with gr.Tab("Examples"):
+            examples.layout()
 
-    login_btn.click(handle_login, [email, password], [status, login_panel, prediction_panel])
-    signup_btn.click(handle_signup, [name, phone, email, password], [status, login_panel, prediction_panel])
-    predict_btn.click(predict_image, inputs=image_input, outputs=result)
-    logout_btn.click(handle_logout, outputs=[session, login_panel, prediction_panel])
+        with gr.Tab("About"):
+            about.layout()
 
-# Launch app
+        with gr.Tab("Community"):
+            community.layout()
+
+        with gr.Tab("User Guide"):
+            user_guide.layout()
+
+        with gr.Tab("Install"):
+            install.layout()
+
+# Run the app
 if __name__ == "__main__":
     demo.launch()
