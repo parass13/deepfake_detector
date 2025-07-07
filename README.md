@@ -16,7 +16,7 @@
 
 ## 📦 Deployment
 This app is deployed on Hugging Face Spaces and cloned to GitHub for version control.
-# deepfake_detector
+
 
 
 
