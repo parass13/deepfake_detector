@@ -1,4 +1,17 @@
+HEAD
 # Deepfake Detector
+
+
+title: Deepfake Detector
+emoji: 📚
+colorFrom: red
+colorTo: red
+sdk: gradio
+sdk_version: 5.35.0
+app_file: dashboard.py
+pinned: false
+
+ c477a1b (Update README.md)
 
 A Gradio-based web app for detecting deepfakes using a trained deep learning model.
 
