@@ -1,6 +1,6 @@
 import gradio as gr
 
-def get_user_guide():
+def layout():
     with gr.Blocks() as user_guide:
         gr.Markdown("## 🧭 User Guide")
         gr.Markdown("Follow these simple steps to use the Deepfake Detection System:")
