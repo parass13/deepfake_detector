@@ -13,7 +13,7 @@ import warnings
 
 from pages import about
 from pages import community
-from pages import examples
+
 from pages import user_guide
 
 
@@ -112,8 +112,7 @@ with gr.Blocks() as demo:
             predict_btn = gr.Button("Predict")
             predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
 
-        with gr.Tab("📂 Examples"):
-            examples.layout()
+        
 
         with gr.Tab("ℹ️ About"):
             about.layout()
