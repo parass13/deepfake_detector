@@ -1,43 +1,34 @@
 import streamlit as st
 
-
 def show_user_guide():
-    st.header(' ')
-    st.header(' ')
-    st.header("User guide")
-    st.header(' ')
+    st.title("🧭 User Guide")
+    st.markdown("Follow these simple steps to use the Deepfake Detection System:")
 
-    container = st.container(border=True)
-    container.markdown(''':blue[**Step 1:**]''')
-    container.write("Create an account to get access")
+    with st.container(border=True):
+        st.markdown("### 🔐 Step 1: Register or Log In")
+        st.write("""
+        - If you're a new user, click **Sign Up** and provide your Name, Email, Phone, and Password.
+        - Existing users can directly **Log In** using their registered credentials.
+        """)
 
-    container2 = st.container(border=True)
-    container2.markdown(''':blue[**Step 2:**]''')
-    container2.write("Upload your Images")
+    with st.container(border=True):
+        st.markdown("### 📷 Step 2: Upload an Image")
+        st.write("""
+        - Once logged in, you'll be taken to the **Detection Panel**.
+        - Upload any image you suspect might be fake or tampered with.
+        - Supported formats: JPG, PNG, JPEG.
+        """)
 
-    container3 = st.container(border=True)
-    container3.markdown(''':blue[**Step 3:**]''')
-    container3.write("Get the results")
+    with st.container(border=True):
+        st.markdown("### 🧠 Step 3: Get Deepfake Detection Results")
+        st.write("""
+        - Click the **Predict** button.
+        - The system uses a trained Deep Learning model to analyze the image.
+        - You'll see either:
+            - ✅ **Real Image** – if the image appears authentic, or
+            - ⚠️ **Fake Image** – if the model detects manipulation.
+        """)
 
-    #row1 = st.columns(1)
-    #row2 = st.columns(1)
-    #row3 = st.columns(1)
-
-
-    #for col in row1:
-    #with st.container():
-            #tile = col.container(height=120)
-    #st.title(":balloon:")
-
-    #st.subheader("Step 1: ")
-    #for col in row1:
-        #tile = col.container(height=120)
-        #st.markdown(":user: **Step 1:**")
-        #st.write("Create an account and subscribe to get access")
-    
-    #tile.title(":balloon:")
-    #st.write("This is outside the container")
-
-    #Now insert some more in the container
-    #container.write("This is inside too")
-    
+    with st.container(border=True):
+        st.markdown("### 🔓 Step 4: Log Out")
+        st.write("When you're done, just click the **Logout** button to securely end your session.")
