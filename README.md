@@ -31,4 +31,4 @@ python dashboard.py
 
 ```
 
-Check out the [Hugging Face Spaces config reference](https://huggingface.co/docs/hub/spaces-config-reference)
+Check out the [Deepfake_Detection](https://huggingface.co/spaces/parass13/deepfake_detector)
