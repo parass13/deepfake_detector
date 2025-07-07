@@ -9,29 +9,23 @@ import tensorflow as tf
 import os
 import warnings
 
-# Import pages (make sure each page has layout() function defined)
-
-from pages import about
-from pages import community
-
-from pages import user_guide
-
+# Import pages
+from pages import about, community, user_guide
 
 # Suppress logs and warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
-# Load TensorFlow deepfake model
+# Load deepfake model
 deepfake_model = tf.keras.models.load_model("model_15_64.h5")
 
-# Setup SQLite database
+# SQLite setup
 db_path = os.path.abspath("users.db")
 print(f"✅ Using database at: {db_path}")
 conn = sqlite3.connect(db_path, check_same_thread=False)
 cursor = conn.cursor()
 
-# Create table if it doesn't exist
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS user_details (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,33 +58,34 @@ def predict_image(image):
 
 def register_user(name, phone, email, password):
     if not is_valid_email(email):
-        return "❌ Invalid email"
+        return "❌ Invalid email", False
     if not is_valid_phone(phone):
-        return "❌ Phone must be 10 digits"
+        return "❌ Phone must be 10 digits", False
 
     cursor.execute("SELECT * FROM user_details WHERE EMAIL = ?", (email,))
     if cursor.fetchone():
-        return "⚠️ Email already registered"
+        return "⚠️ Email already registered", False
 
     hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
     cursor.execute("INSERT INTO user_details (NAME, PHONE, EMAIL, GENDER, PASSWORD) VALUES (?, ?, ?, ?, ?)",
                    (name, phone, email, "U", hashed_pw))
     conn.commit()
     print(f"✅ Registered new user: {email}")
-    return "✅ Registration successful! Please log in."
+    return "✅ Registration successful! Please log in.", False
 
 def login_user(email, password):
     cursor.execute("SELECT PASSWORD FROM user_details WHERE EMAIL = ?", (email,))
     result = cursor.fetchone()
-    if result and bcrypt.checkpw(password.encode(), result[0] if isinstance(result[0], bytes) else result[0].encode()):
-        return "✅ Login successful!"
-    return "❌ Invalid credentials"
+    if result and bcrypt.checkpw(password.encode(), result[0]):
+        return "✅ Login successful!", True
+    return "❌ Invalid credentials", False
+
 
 # Gradio App
 with gr.Blocks() as demo:
-    with gr.Tabs():
-        
+    session = gr.State(value=False)  # Stores login state (True/False)
 
+    with gr.Tabs() as tabs:
         with gr.Tab("🔐 Login"):
             gr.Markdown("### Login or Sign Up")
 
@@ -102,17 +97,37 @@ with gr.Blocks() as demo:
             login_btn = gr.Button("Login")
             signup_btn = gr.Button("Sign Up")
 
-            login_btn.click(fn=login_user, inputs=[email, password], outputs=status)
-            signup_btn.click(fn=register_user, inputs=[name, phone, email, password], outputs=status)
+            def handle_login(e, p):
+                msg, ok = login_user(e, p)
+                return msg, ok
 
-        with gr.Tab("🧪 Detect Deepfake"):
-            gr.Markdown("### Upload an Image to Detect Deepfake")
-            image_input = gr.Image(type="pil")
-            result = gr.Textbox(label="Prediction Result")
-            predict_btn = gr.Button("Predict")
-            predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
+            def handle_signup(n, ph, e, p):
+                msg, ok = register_user(n, ph, e, p)
+                return msg, ok
 
-        
+            login_btn.click(handle_login, [email, password], [status, session])
+            signup_btn.click(handle_signup, [name, phone, email, password], [status, session])
+
+        with gr.Tab("🧪 Detect Deepfake") as detect_tab:
+            with gr.Column(visible=False) as detection_content:
+                gr.Markdown("### Upload an Image to Detect Deepfake")
+                image_input = gr.Image(type="pil")
+                result = gr.Textbox(label="Prediction Result")
+                predict_btn = gr.Button("Predict")
+                predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
+
+            # Show warning if not logged in
+            with gr.Column(visible=True) as login_prompt:
+                warning_text = gr.Markdown("⚠️ Please login or sign up to access deepfake detection.")
+
+        def toggle_tab(logged_in):
+            return (
+                gr.update(visible=logged_in),  # detection_content
+                gr.update(visible=not logged_in),  # login_prompt
+            )
+
+        # Toggle detection tab visibility based on login state
+        session.change(fn=toggle_tab, inputs=session, outputs=[detection_content, login_prompt])
 
         with gr.Tab("ℹ️ About"):
             about.layout()
@@ -123,7 +138,6 @@ with gr.Blocks() as demo:
         with gr.Tab("📘 User Guide"):
             user_guide.layout()
 
-        
 # Launch App
 if __name__ == "__main__":
     demo.launch()
