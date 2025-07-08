@@ -5,17 +5,20 @@ import numpy as np
 import cv2
 from PIL import Image
 import tensorflow as tf
+
+
 import os
 import warnings
 import requests
 import json
+
 
 from pages import about, community, user_guide
 
 # --- Config ---
 SUPABASE_URL = "YOUR_URL"
 SUPABASE_API_KEY = "YOUR_KEY"
-SUPABASE_TABLE = "TABLE_NAME"
+SUPABASE_TABLE = "table_name"
 
 headers = {
     "apikey": SUPABASE_API_KEY,
@@ -28,7 +31,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
-MODEL_PATH = "YOUR_MODEL_PATH"
+MODEL_PATH = "model_15_64.h5"
 if not os.path.exists(MODEL_PATH):
     print(f"Model file '{MODEL_PATH}' not found. Creating a dummy model for testing.")
     dummy_model = tf.keras.Sequential([
@@ -97,13 +100,27 @@ def login_user(email, password):
 with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as demo:
     is_logged_in = gr.State(False)
 
+    HOME_TAB_NAME = "🏠 Home"
     LOGIN_TAB_NAME = "🔐 Login"
     DETECT_TAB_NAME = "🧪 Detect Deepfake"
     ABOUT_TAB_NAME = "ℹ️ About"
     COMMUNITY_TAB_NAME = "🌐 Community"
     GUIDE_TAB_NAME = "📘 User Guide"
 
-    with gr.Tabs(selected=LOGIN_TAB_NAME) as tabs:
+    with gr.Tabs(selected=HOME_TAB_NAME) as tabs:
+        # --- Home Tab (Intro Page) ---
+        with gr.Tab(HOME_TAB_NAME) as home_tab:
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("""
+                    <div class="home-content">
+                        <h1>👁️‍🗨️ Welcome to VerifiAI</h1>
+                        <p>Your trusted assistant for detecting deepfakes in images using AI.</p>
+                        <p>🔍 Upload images, analyze authenticity, and learn how deepfakes work.</p>
+                        <p>👉 Use the tabs above to get started.</p>
+                    </div>
+                    """, elem_id="home-markdown")
+
         with gr.Tab(LOGIN_TAB_NAME) as login_tab:
             with gr.Row():
                 with gr.Column(scale=1):
@@ -135,6 +152,22 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
         with gr.Tab(ABOUT_TAB_NAME): about.layout()
         with gr.Tab(COMMUNITY_TAB_NAME): community.layout()
         with gr.Tab(GUIDE_TAB_NAME): user_guide.layout()
+       
+
+
+
+    # --- CSS Styling ---
+    gr.HTML("""
+    <style>
+    #home-markdown {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 70vh;
+        text-align: center;
+    }
+    </style>
+    """)
 
     def update_ui_on_auth_change(logged_in_status):
         if logged_in_status:
@@ -167,6 +200,14 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
             return gr.update(value=msg, visible=True), "", "", "", "", "", gr.update(open=False)
         else:
             return gr.update(value=msg, visible=True), name, phone, email, gender, password, gr.update(open=True)
+
+
+    
+
+    
+    
+  
+
 
     login_btn.click(fn=handle_login, inputs=[email_login, password_login], outputs=[is_logged_in, message_output])
     logout_btn.click(fn=handle_logout, inputs=[], outputs=[is_logged_in, email_login, password_login])
