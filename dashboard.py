@@ -1,5 +1,4 @@
 import gradio as gr
-import sqlite3
 import re
 import bcrypt
 import numpy as np
@@ -8,169 +7,176 @@ from PIL import Image
 import tensorflow as tf
 import os
 import warnings
+import requests
+import json
 
 from pages import about, community, user_guide
 
-# Suppress warnings and logs
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# --- Config ---
+SUPABASE_URL = "YOUR_URL"
+SUPABASE_API_KEY = "YOUR_KEY"
+SUPABASE_TABLE = "TABLE_NAME"
+
+headers = {
+    "apikey": SUPABASE_API_KEY,
+    "Authorization": f"Bearer {SUPABASE_API_KEY}",
+    "Content-Type": "application/json"
+}
+
+# --- Setup ---
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
-# Load model
-deepfake_model = tf.keras.models.load_model("model_15_64.h5")
+MODEL_PATH = "YOUR_MODEL_PATH"
+if not os.path.exists(MODEL_PATH):
+    print(f"Model file '{MODEL_PATH}' not found. Creating a dummy model for testing.")
+    dummy_model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(128, 128, 3)),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(1, activation='sigmoid')
+    ])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        dummy_model.save(MODEL_PATH)
 
-# Database setup
-db_path = os.path.abspath("users.db")
-conn = sqlite3.connect(db_path, check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS user_details (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    NAME TEXT,
-    PHONE TEXT,
-    EMAIL TEXT UNIQUE,
-    GENDER TEXT,
-    PASSWORD BLOB
-)
-''')
-conn.commit()
-conn.close()
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    deepfake_model = tf.keras.models.load_model(MODEL_PATH)
 
-# Validators
+# --- Helpers ---
 def is_valid_email(email): return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 def is_valid_phone(phone): return re.match(r"^[0-9]{10}$", phone)
 
-# Image preprocessing
 def preprocess_image(image):
-    image = np.array(image)
-    image = cv2.resize(image, (128, 128))
-    image = image.astype(np.float32) / 255.0
-    return np.expand_dims(image, axis=0)
+    if image.mode != 'RGB': image = image.convert('RGB')
+    image_arr = np.array(image)
+    image_arr = cv2.resize(image_arr, (128, 128))
+    image_arr = image_arr.astype(np.float32) / 255.0
+    return np.expand_dims(image_arr, axis=0)
 
 def predict_image(image):
+    if image is None: return "Please upload an image first."
     preprocessed = preprocess_image(image)
     prediction = deepfake_model.predict(preprocessed)[0][0]
-    return "✅ Real Image" if prediction >= 0.5 else "⚠️ Fake Image"
+    confidence = prediction if prediction >= 0.5 else 1 - prediction
+    label = "✅ Real Image" if prediction >= 0.5 else "⚠️ Fake Image"
+    return f"{label} (Confidence: {confidence:.2%})"
 
-# Auth logic (now using local DB connection inside each function)
-def register_user(name, phone, email, password):
-    if not is_valid_email(email):
-        return "❌ Invalid email"
-    if not is_valid_phone(phone):
-        return "❌ Phone must be 10 digits"
+def register_user(name, phone, email, gender, password):
+    if not all([name, phone, email, gender, password]):
+        return "❌ All fields are required for signup."
+    if not is_valid_email(email): return "❌ Invalid email format."
+    if not is_valid_phone(phone): return "❌ Phone must be 10 digits."
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM user_details WHERE EMAIL = ?", (email,))
-    if cursor.fetchone():
-        conn.close()
-        return "⚠️ Email already registered"
+    query_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{email}"
+    r = requests.get(query_url, headers=headers)
+    if r.status_code == 200 and len(r.json()) > 0:
+        return "⚠️ Email already registered."
 
-    hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-    cursor.execute(
-        "INSERT INTO user_details (NAME, PHONE, EMAIL, GENDER, PASSWORD) VALUES (?, ?, ?, ?, ?)",
-        (name, phone, email, "U", hashed_pw)
-    )
-    conn.commit()
-    conn.close()
-    return "✅ Registration successful! Please log in."
+    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode()
+    data = {
+        "name": name,
+        "phone": phone,
+        "email": email,
+        "gender": gender,
+        "password": hashed_pw
+    }
+    r = requests.post(f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}", headers=headers, data=json.dumps(data))
+    return "✅ Registration successful! Please log in." if r.status_code == 201 else "❌ Error during registration."
 
 def login_user(email, password):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT PASSWORD FROM user_details WHERE EMAIL = ?", (email,))
-    result = cursor.fetchone()
-    conn.close()
-    if result and bcrypt.checkpw(password.encode(), result[0] if isinstance(result[0], bytes) else result[0].encode()):
-        return True
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{email}"
+    r = requests.get(url, headers=headers)
+    if r.status_code == 200 and r.json():
+        stored_hash = r.json()[0]["password"]
+        return bcrypt.checkpw(password.encode(), stored_hash.encode())
     return False
 
-# Gradio UI
-with gr.Blocks() as demo:
+# --- UI ---
+with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as demo:
     is_logged_in = gr.State(False)
 
-    with gr.Tabs(selected=0) as tabs:
-        login_tab = gr.Tab("🔐 Login")
-        detect_tab = gr.Tab("🧪 Detect Deepfake", visible=False)
+    LOGIN_TAB_NAME = "🔐 Login"
+    DETECT_TAB_NAME = "🧪 Detect Deepfake"
+    ABOUT_TAB_NAME = "ℹ️ About"
+    COMMUNITY_TAB_NAME = "🌐 Community"
+    GUIDE_TAB_NAME = "📘 User Guide"
 
-        with login_tab:
-            gr.Markdown("### Login or Sign Up")
-            name = gr.Textbox(label="Name (Sign Up Only)")
-            phone = gr.Textbox(label="Phone (Sign Up Only)")
-            email = gr.Textbox(label="Email")
-            password = gr.Textbox(label="Password", type="password")
-            login_btn = gr.Button("Login")
-            signup_btn = gr.Button("Sign Up")
-            message_output = gr.Markdown("", visible=False)
+    with gr.Tabs(selected=LOGIN_TAB_NAME) as tabs:
+        with gr.Tab(LOGIN_TAB_NAME) as login_tab:
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("## Welcome!", "Login to access the detector, or sign up for a new account.")
+                with gr.Column(scale=2):
+                    gr.Markdown("### Login or Sign Up")
+                    message_output = gr.Markdown(visible=False)
+                    email_login = gr.Textbox(label="Email")
+                    password_login = gr.Textbox(label="Password", type="password")
+                    login_btn = gr.Button("Login", variant="primary")
+                    with gr.Accordion("New User? Click here to Sign Up", open=False) as signup_accordion:
+                        name_signup = gr.Textbox(label="Name")
+                        phone_signup = gr.Textbox(label="Phone (10 digits)")
+                        email_signup = gr.Textbox(label="Email")
+                        gender_signup = gr.Dropdown(label="Gender", choices=["Male", "Female", "Other"])
+                        password_signup = gr.Textbox(label="Create Password", type="password")
+                        signup_btn = gr.Button("Sign Up")
 
-        with detect_tab:
-            gr.Markdown("### Upload an Image to Detect Deepfake")
-            image_input = gr.Image(type="pil")
-            result = gr.Textbox(label="Prediction Result")
-            predict_btn = gr.Button("Predict")
-            predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
-            logout_btn = gr.Button("Logout")
+        with gr.Tab(DETECT_TAB_NAME, visible=False) as detect_tab:
+            with gr.Row():
+                gr.Markdown("## Deepfake Detector")
+                logout_btn = gr.Button("Logout")
+            with gr.Row():
+                image_input = gr.Image(type="pil", label="Upload Image", scale=1)
+                with gr.Column(scale=1):
+                    result = gr.Textbox(label="Prediction Result", interactive=False)
+                    predict_btn = gr.Button("Predict", variant="primary")
 
-        with gr.Tab("ℹ️ About"):
-            about.layout()
+        with gr.Tab(ABOUT_TAB_NAME): about.layout()
+        with gr.Tab(COMMUNITY_TAB_NAME): community.layout()
+        with gr.Tab(GUIDE_TAB_NAME): user_guide.layout()
 
-        with gr.Tab("🌐 Community"):
-            community.layout()
-
-        with gr.Tab("📘 User Guide"):
-            user_guide.layout()
-
-    # --- Backend Logic ---
-    def handle_login(email, password):
-        success = login_user(email, password)
-        if success:
+    def update_ui_on_auth_change(logged_in_status):
+        if logged_in_status:
             return (
-                "✅ Login successful!",
-                True,
-                gr.update(visible=False),  # Hide login tab
-                gr.update(visible=True),   # Show detect tab
-                gr.update(selected=1),     # Switch to detect tab
-                gr.update(visible=True),   # Show logout
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(selected=DETECT_TAB_NAME),
+                gr.update(value="✅ Login successful!", visible=True)
             )
-        return (
-            "❌ Invalid credentials",
-            False,
-            gr.update(visible=True),
-            gr.update(visible=False),
-            gr.update(selected=0),
-            gr.update(visible=False),
-        )
+        else:
+            return (
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(selected=LOGIN_TAB_NAME),
+                gr.update(value="", visible=False)
+            )
 
-    def handle_signup(name, phone, email, password):
-        msg = register_user(name, phone, email, password)
-        return gr.update(value=msg, visible=True)
+    def handle_login(email, password):
+        if login_user(email, password):
+            return True, gr.update(value="✅ Login successful!", visible=True)
+        else:
+            return False, gr.update(value="❌ Invalid email or password.", visible=True)
 
     def handle_logout():
-        return (
-            False,
-            gr.update(visible=True),   # Show login tab
-            gr.update(visible=False),  # Hide detect tab
-            gr.update(selected=0),     # Go back to login tab
-            gr.update(visible=False),  # Hide logout
-        )
+        return False, "", ""
 
-    login_btn.click(
-        fn=handle_login,
-        inputs=[email, password],
-        outputs=[message_output, is_logged_in, login_tab, detect_tab, tabs, logout_btn]
-    )
+    def handle_signup(name, phone, email, gender, password):
+        msg = register_user(name, phone, email, gender, password)
+        if msg.startswith("✅"):
+            return gr.update(value=msg, visible=True), "", "", "", "", "", gr.update(open=False)
+        else:
+            return gr.update(value=msg, visible=True), name, phone, email, gender, password, gr.update(open=True)
 
+    login_btn.click(fn=handle_login, inputs=[email_login, password_login], outputs=[is_logged_in, message_output])
+    logout_btn.click(fn=handle_logout, inputs=[], outputs=[is_logged_in, email_login, password_login])
+    is_logged_in.change(fn=update_ui_on_auth_change, inputs=is_logged_in, outputs=[login_tab, detect_tab, tabs, message_output])
     signup_btn.click(
         fn=handle_signup,
-        inputs=[name, phone, email, password],
-        outputs=[message_output]
+        inputs=[name_signup, phone_signup, email_signup, gender_signup, password_signup],
+        outputs=[message_output, name_signup, phone_signup, email_signup, gender_signup, password_signup, signup_accordion]
     )
-
-    logout_btn.click(
-        fn=handle_logout,
-        inputs=[],
-        outputs=[is_logged_in, login_tab, detect_tab, tabs, logout_btn]
-    )
+    predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
 
 if __name__ == "__main__":
     demo.launch()
