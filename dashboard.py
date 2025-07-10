@@ -6,19 +6,17 @@ import cv2
 from PIL import Image
 import tensorflow as tf
 
-
 import os
 import warnings
 import requests
 import json
-
 
 from pages import about, community, user_guide
 
 # --- Config ---
 SUPABASE_URL = "YOUR_URL"
 SUPABASE_API_KEY = "YOUR_KEY"
-SUPABASE_TABLE = "table_name"
+SUPABASE_TABLE = "TABLE_NAME"
 
 headers = {
     "apikey": SUPABASE_API_KEY,
@@ -92,24 +90,27 @@ def login_user(email, password):
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{email}"
     r = requests.get(url, headers=headers)
     if r.status_code == 200 and r.json():
-        stored_hash = r.json()[0]["password"]
-        return bcrypt.checkpw(password.encode(), stored_hash.encode())
+        try:
+            stored_hash = r.json()[0]["password"]
+            return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+        except (IndexError, KeyError):
+            return False
     return False
 
 # --- UI ---
+HOME_TAB_NAME = "🏠 Home"
+LOGIN_TAB_NAME = "🔐 Login"
+DETECT_TAB_NAME = "🧪 Detect Deepfake"
+ABOUT_TAB_NAME = "ℹ️ About"
+COMMUNITY_TAB_NAME = "🌐 Community"
+GUIDE_TAB_NAME = "📘 User Guide"
+
 with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as demo:
     is_logged_in = gr.State(False)
 
-    HOME_TAB_NAME = "🏠 Home"
-    LOGIN_TAB_NAME = "🔐 Login"
-    DETECT_TAB_NAME = "🧪 Detect Deepfake"
-    ABOUT_TAB_NAME = "ℹ️ About"
-    COMMUNITY_TAB_NAME = "🌐 Community"
-    GUIDE_TAB_NAME = "📘 User Guide"
-
+    #  Set a default selected tab ---
     with gr.Tabs(selected=HOME_TAB_NAME) as tabs:
-        # --- Home Tab (Intro Page) ---
-        with gr.Tab(HOME_TAB_NAME) as home_tab:
+        with gr.Tab(HOME_TAB_NAME, id=HOME_TAB_NAME) as home_tab:
             with gr.Row():
                 with gr.Column():
                     gr.Markdown("""
@@ -121,7 +122,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
                     </div>
                     """, elem_id="home-markdown")
 
-        with gr.Tab(LOGIN_TAB_NAME) as login_tab:
+        with gr.Tab(LOGIN_TAB_NAME, id=LOGIN_TAB_NAME) as login_tab:
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("## Welcome!", "Login to access the detector, or sign up for a new account.")
@@ -139,7 +140,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
                         password_signup = gr.Textbox(label="Create Password", type="password")
                         signup_btn = gr.Button("Sign Up")
 
-        with gr.Tab(DETECT_TAB_NAME, visible=False) as detect_tab:
+        with gr.Tab(DETECT_TAB_NAME, id=DETECT_TAB_NAME, visible=False) as detect_tab:
             with gr.Row():
                 gr.Markdown("## Deepfake Detector")
                 logout_btn = gr.Button("Logout")
@@ -149,14 +150,10 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
                     result = gr.Textbox(label="Prediction Result", interactive=False)
                     predict_btn = gr.Button("Predict", variant="primary")
 
-        with gr.Tab(ABOUT_TAB_NAME): about.layout()
-        with gr.Tab(COMMUNITY_TAB_NAME): community.layout()
-        with gr.Tab(GUIDE_TAB_NAME): user_guide.layout()
-       
+        with gr.Tab(ABOUT_TAB_NAME, id=ABOUT_TAB_NAME): about.layout()
+        with gr.Tab(COMMUNITY_TAB_NAME, id=COMMUNITY_TAB_NAME): community.layout(is_logged_in)
+        with gr.Tab(GUIDE_TAB_NAME, id=GUIDE_TAB_NAME): user_guide.layout()
 
-
-
-    # --- CSS Styling ---
     gr.HTML("""
     <style>
     #home-markdown {
@@ -169,20 +166,25 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
     </style>
     """)
 
+    #  Modify the function to also control which tab is selected ---
     def update_ui_on_auth_change(logged_in_status):
         if logged_in_status:
+            # On successful login, hide login/home, show detector, and select the detector tab
             return (
-                gr.update(visible=False),
-                gr.update(visible=True),
-                gr.update(selected=DETECT_TAB_NAME),
-                gr.update(value="✅ Login successful!", visible=True)
+                gr.update(visible=False),  # login_tab
+                gr.update(visible=True),   # detect_tab
+                gr.update(visible=False),  # home_tab
+                gr.update(value="✅ Login successful!", visible=True),
+                gr.update(selected=DETECT_TAB_NAME) # This selects the tab
             )
         else:
+            # On logout or initial load, show login/home, hide detector, and select the home tab
             return (
-                gr.update(visible=True),
-                gr.update(visible=False),
-                gr.update(selected=LOGIN_TAB_NAME),
-                gr.update(value="", visible=False)
+                gr.update(visible=True),   # login_tab
+                gr.update(visible=False),  # detect_tab
+                gr.update(visible=True),   # home_tab
+                gr.update(value="", visible=False),
+                gr.update(selected=HOME_TAB_NAME) # This selects the tab
             )
 
     def handle_login(email, password):
@@ -192,8 +194,9 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
             return False, gr.update(value="❌ Invalid email or password.", visible=True)
 
     def handle_logout():
-        return False, "", ""
-
+    # Return values for: is_logged_in, email_login, password_login, image_input, result
+        return False, "", "", None, ""
+    
     def handle_signup(name, phone, email, gender, password):
         msg = register_user(name, phone, email, gender, password)
         if msg.startswith("✅"):
@@ -201,23 +204,24 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
         else:
             return gr.update(value=msg, visible=True), name, phone, email, gender, password, gr.update(open=True)
 
-
-    
-
-    
-    
-  
-
-
     login_btn.click(fn=handle_login, inputs=[email_login, password_login], outputs=[is_logged_in, message_output])
-    logout_btn.click(fn=handle_logout, inputs=[], outputs=[is_logged_in, email_login, password_login])
-    is_logged_in.change(fn=update_ui_on_auth_change, inputs=is_logged_in, outputs=[login_tab, detect_tab, tabs, message_output])
-    signup_btn.click(
-        fn=handle_signup,
-        inputs=[name_signup, phone_signup, email_signup, gender_signup, password_signup],
-        outputs=[message_output, name_signup, phone_signup, email_signup, gender_signup, password_signup, signup_accordion]
+    logout_btn.click(
+    fn=handle_logout, 
+    inputs=[], 
+    outputs=[is_logged_in, email_login, password_login, image_input, result]
     )
+
+    # Add the `tabs` component to the outputs of the change event ---
+    is_logged_in.change(
+        fn=update_ui_on_auth_change,
+        inputs=is_logged_in,
+        outputs=[login_tab, detect_tab, home_tab, message_output, tabs]
+    )
+    signup_btn.click(fn=handle_signup, inputs=[name_signup, phone_signup, email_signup, gender_signup, password_signup],
+                     outputs=[message_output, name_signup, phone_signup, email_signup, gender_signup, password_signup, signup_accordion])
     predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
+
+    demo.load(lambda: False, None, [is_logged_in])
 
 if __name__ == "__main__":
     demo.launch()
