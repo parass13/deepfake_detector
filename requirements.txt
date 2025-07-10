@@ -4,3 +4,6 @@ opencv-python
 Pillow
 bcrypt
 numpy
+torch
+requests
+transformers
