@@ -4,18 +4,18 @@ import bcrypt
 import numpy as np
 import cv2
 from PIL import Image
-import tensorflow as tf
-
 import os
 import warnings
 import requests
 import json
+import torch
+from transformers import AutoImageProcessor, SiglipForImageClassification
 
 from pages import about, community, user_guide
 
 # --- Config ---
 SUPABASE_URL = "YOUR_URL"
-SUPABASE_API_KEY = "YOUR_KEY"
+SUPABASE_API_KEY = "API_KEY" 
 SUPABASE_TABLE = "TABLE_NAME"
 
 headers = {
@@ -29,39 +29,24 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 warnings.filterwarnings("ignore")
 np.seterr(all='ignore')
 
-MODEL_PATH = "model_15_64.h5"
-if not os.path.exists(MODEL_PATH):
-    print(f"Model file '{MODEL_PATH}' not found. Creating a dummy model for testing.")
-    dummy_model = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(128, 128, 3)),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(1, activation='sigmoid')
-    ])
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        dummy_model.save(MODEL_PATH)
-
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    deepfake_model = tf.keras.models.load_model(MODEL_PATH)
+# --- Load Hugging Face Model ---
+processor = AutoImageProcessor.from_pretrained("prithivMLmods/deepfake-detector-model-v1")
+hf_model = SiglipForImageClassification.from_pretrained("prithivMLmods/deepfake-detector-model-v1")
 
 # --- Helpers ---
 def is_valid_email(email): return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 def is_valid_phone(phone): return re.match(r"^[0-9]{10}$", phone)
 
-def preprocess_image(image):
-    if image.mode != 'RGB': image = image.convert('RGB')
-    image_arr = np.array(image)
-    image_arr = cv2.resize(image_arr, (128, 128))
-    image_arr = image_arr.astype(np.float32) / 255.0
-    return np.expand_dims(image_arr, axis=0)
-
 def predict_image(image):
-    if image is None: return "Please upload an image first."
-    preprocessed = preprocess_image(image)
-    prediction = deepfake_model.predict(preprocessed)[0][0]
-    confidence = prediction if prediction >= 0.5 else 1 - prediction
-    label = "✅ Real Image" if prediction >= 0.5 else "⚠️ Fake Image"
+    if image is None:
+        return "Please upload an image first."
+    image = image.convert("RGB")
+    inputs = processor(images=image, return_tensors="pt")
+    with torch.no_grad():
+        outputs = hf_model(**inputs)
+        probs = torch.nn.functional.softmax(outputs.logits, dim=1).squeeze().tolist()
+    label = "✅ Real Image" if probs[0] >= probs[1] else "⚠️ Fake Image"
+    confidence = max(probs)
     return f"{label} (Confidence: {confidence:.2%})"
 
 def register_user(name, phone, email, gender, password):
@@ -69,20 +54,12 @@ def register_user(name, phone, email, gender, password):
         return "❌ All fields are required for signup."
     if not is_valid_email(email): return "❌ Invalid email format."
     if not is_valid_phone(phone): return "❌ Phone must be 10 digits."
-
     query_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{email}"
     r = requests.get(query_url, headers=headers)
     if r.status_code == 200 and len(r.json()) > 0:
         return "⚠️ Email already registered."
-
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode()
-    data = {
-        "name": name,
-        "phone": phone,
-        "email": email,
-        "gender": gender,
-        "password": hashed_pw
-    }
+    data = {"name": name, "phone": phone, "email": email, "gender": gender, "password": hashed_pw}
     r = requests.post(f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}", headers=headers, data=json.dumps(data))
     return "✅ Registration successful! Please log in." if r.status_code == 201 else "❌ Error during registration."
 
@@ -108,7 +85,6 @@ GUIDE_TAB_NAME = "📘 User Guide"
 with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as demo:
     is_logged_in = gr.State(False)
 
-    #  Set a default selected tab ---
     with gr.Tabs(selected=HOME_TAB_NAME) as tabs:
         with gr.Tab(HOME_TAB_NAME, id=HOME_TAB_NAME) as home_tab:
             with gr.Row():
@@ -166,25 +142,22 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
     </style>
     """)
 
-    #  Modify the function to also control which tab is selected ---
     def update_ui_on_auth_change(logged_in_status):
         if logged_in_status:
-            # On successful login, hide login/home, show detector, and select the detector tab
             return (
                 gr.update(visible=False),  # login_tab
                 gr.update(visible=True),   # detect_tab
                 gr.update(visible=False),  # home_tab
                 gr.update(value="✅ Login successful!", visible=True),
-                gr.update(selected=DETECT_TAB_NAME) # This selects the tab
+                gr.update(selected=DETECT_TAB_NAME)
             )
         else:
-            # On logout or initial load, show login/home, hide detector, and select the home tab
             return (
-                gr.update(visible=True),   # login_tab
-                gr.update(visible=False),  # detect_tab
-                gr.update(visible=True),   # home_tab
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(visible=True),
                 gr.update(value="", visible=False),
-                gr.update(selected=HOME_TAB_NAME) # This selects the tab
+                gr.update(selected=HOME_TAB_NAME)
             )
 
     def handle_login(email, password):
@@ -194,9 +167,8 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
             return False, gr.update(value="❌ Invalid email or password.", visible=True)
 
     def handle_logout():
-    # Return values for: is_logged_in, email_login, password_login, image_input, result
         return False, "", "", None, ""
-    
+
     def handle_signup(name, phone, email, gender, password):
         msg = register_user(name, phone, email, gender, password)
         if msg.startswith("✅"):
@@ -205,22 +177,11 @@ with gr.Blocks(theme=gr.themes.Soft(), title="VerifiAI - Deepfake Detector") as 
             return gr.update(value=msg, visible=True), name, phone, email, gender, password, gr.update(open=True)
 
     login_btn.click(fn=handle_login, inputs=[email_login, password_login], outputs=[is_logged_in, message_output])
-    logout_btn.click(
-    fn=handle_logout, 
-    inputs=[], 
-    outputs=[is_logged_in, email_login, password_login, image_input, result]
-    )
-
-    # Add the `tabs` component to the outputs of the change event ---
-    is_logged_in.change(
-        fn=update_ui_on_auth_change,
-        inputs=is_logged_in,
-        outputs=[login_tab, detect_tab, home_tab, message_output, tabs]
-    )
+    logout_btn.click(fn=handle_logout, inputs=[], outputs=[is_logged_in, email_login, password_login, image_input, result])
+    is_logged_in.change(fn=update_ui_on_auth_change, inputs=is_logged_in, outputs=[login_tab, detect_tab, home_tab, message_output, tabs])
     signup_btn.click(fn=handle_signup, inputs=[name_signup, phone_signup, email_signup, gender_signup, password_signup],
                      outputs=[message_output, name_signup, phone_signup, email_signup, gender_signup, password_signup, signup_accordion])
     predict_btn.click(fn=predict_image, inputs=image_input, outputs=result)
-
     demo.load(lambda: False, None, [is_logged_in])
 
 if __name__ == "__main__":
